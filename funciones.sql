@@ -65,7 +65,7 @@ END $$
 
 DELIMITER $$
 CREATE FUNCTION ExisteEstudiante(
-    carnet INT
+    carnet BIGINT
 )
 RETURNS BOOLEAN
 DETERMINISTIC
@@ -204,7 +204,7 @@ RETURNS BOOLEAN
 DETERMINISTIC
 BEGIN
 DECLARE existe BOOLEAN;
-
+SELECT EXISTS(SELECT 1 FROM curso c WHERE c.codigo = codigo) INTO existe;
 
 RETURN (existe);
 END $$
@@ -406,7 +406,7 @@ END $$
 
 DELIMITER $$
 CREATE FUNCTION ValidarAsignacionCiclo(
-    carnet INT,
+    carnet BIGINT,
     codigo_curso INT,
     ciclo VARCHAR(2),
     anio INT
@@ -432,7 +432,7 @@ END $$
 DELIMITER $$
 CREATE PROCEDURE addAsignacionCurso(
     IN idcursohabilitado_in INT,
-    IN carnet_in INT
+    IN carnet_in BIGINT
 )
 add_asignacion:BEGIN
 DECLARE status_existe TINYINT;
@@ -537,7 +537,7 @@ END $$
 DELIMITER $$
 CREATE PROCEDURE addDesasignacionCurso(
     IN idcursohabilitado_in INT,
-    IN carnet_in INT
+    IN carnet_in BIGINT
 )
 add_desasignacion:BEGIN
 
@@ -590,7 +590,147 @@ END $$
 
 
 
+/*                                 Notas                                       */
+
+DELIMITER $$
+CREATE FUNCTION ExisteNotaCurso(
+    idcursohabilitado INT,
+    carnet BIGINT
+)
+RETURNS BOOLEAN
+DETERMINISTIC
+BEGIN
+DECLARE existe BOOLEAN;
+
+SELECT EXISTS(
+    SELECT 1 FROM cursohabilitado ch, estudiante e, notas n
+    WHERE ch.idcursohabilitado = n.cursohabilitado_idcursohabilitado
+    AND n.estudiante_carnet = e.carnet
+    AND ch.idcursohabilitado = idcursohabilitado
+    AND e.carnet = carnet
+           ) INTO existe;
+
+RETURN (existe);
+END $$
+
+
+DELIMITER $$
+CREATE PROCEDURE addNotaCurso(
+    IN idcursohabilitado_in INT,
+    IN carnet_in BIGINT,
+    IN nota_in DECIMAL
+)
+add_notas:BEGIN
+DECLARE creditos_otorgados INT;
+DECLARE nota_rounded INT;
+DECLARE creditos_estudiante INT;
+
+IF (NOT existeIdCursoHabilitado(idcursohabilitado_in)) THEN
+    SELECT 'El id del curso habilitado no existe' AS ERROR;
+    LEAVE add_notas;
+END IF;
+
+IF (NOT ExisteEstudiante(carnet_in)) THEN
+    SELECT CONCAT('El estudiante ', carnet_in, ' no existe') AS ERROR;
+    LEAVE add_notas;
+END IF;
+
+IF (ExisteNotaCurso(idcursohabilitado_in, carnet_in)) THEN
+    SELECT CONCAT('Ya existe una nota ingresada para el estudiante ', carnet_in) AS ERROR;
+    LEAVE add_notas;
+END IF;
+
+SET nota_rounded = ROUND(nota_in);
+
+IF (nota_rounded >= 61) THEN
+    SELECT c.creditos_otorgados INTO creditos_otorgados
+    FROM cursohabilitado ch, curso c
+    WHERE ch.curso_codigo = c.codigo
+    AND ch.idcursohabilitado = idcursohabilitado_in;
+
+    SELECT es.creditos INTO creditos_estudiante
+    FROM estudiante es
+    WHERE es.carnet = carnet_in;
+
+    SET creditos_estudiante = creditos_estudiante + creditos_otorgados;
+
+    UPDATE estudiante SET creditos = creditos_estudiante
+    WHERE carnet = carnet_in;
+END IF;
+
+INSERT INTO notas(cursohabilitado_idcursohabilitado, estudiante_carnet, nota) VALUES
+(idcursohabilitado_in, carnet_in, nota_rounded);
+
+SELECT CONCAT('Se agrego la nota del estudiante ', carnet_in, ' correctamente') AS MENSAJE;
+
+END $$
+
+
+
+/*                          Actas                               */
+
+DELIMITER $$
+CREATE FUNCTION ExisteActaCurso(
+    idcursohabilitado_in INT
+)
+RETURNS BOOLEAN
+DETERMINISTIC
+BEGIN
+DECLARE existe BOOLEAN;
+SELECT EXISTS(
+               SELECT 1
+               FROM cursohabilitado ch,
+                    actas a
+               WHERE ch.idcursohabilitado = a.cursohabilitado_idcursohabilitado
+                 AND ch.idcursohabilitado = idcursohabilitado_in
+           ) INTO existe;
+RETURN (existe);
+END $$
+
+
+DELIMITER $$
+CREATE PROCEDURE addActasCurso(
+    IN idcursohabilitado_in INT
+)
+add_acta:BEGIN
+DECLARE asignados INT;
+DECLARE notas_ingresadas INT;
+DECLARE cantidad INT;
+
+IF (existeActaCurso(idcursohabilitado_in)) THEN
+    SELECT 'Ya existe un acta para dicho curso, no se puede modificar' AS ERROR;
+    LEAVE add_acta;
+END IF;
+
+SELECT COUNT(*) INTO asignados
+FROM cursohabilitado ch, asignacioncurso a
+WHERE ch.idcursohabilitado = a.cursohabilitado_idcursohabilitado
+AND ch.idcursohabilitado = idcursohabilitado_in
+AND a.status = 1;
+
+SELECT COUNT(*) INTO notas_ingresadas
+FROM notas n, cursohabilitado ch
+WHERE n.cursohabilitado_idcursohabilitado = ch.idcursohabilitado
+AND n.cursohabilitado_idcursohabilitado = 7;
+
+SET cantidad = asignados - notas_ingresadas;
+
+IF (asignados != notas_ingresadas) THEN
+    SELECT CONCAT('Aún hay ', cantidad, ' estudiantes pendiente con nota') AS ERROR;
+    LEAVE add_acta;
+END IF;
+
+INSERT INTO actas(cursohabilitado_idcursohabilitado, fecha_creacion) VALUES
+(idcursohabilitado_in, SYSDATE());
+
+SELECT 'Se genero correctamente el acta del curso' AS MENSAJE;
+
+END $$
+
+
+
 /*             Bitacora                   */
+
 DELIMITER $$
 CREATE TRIGGER bitacora_carrera_insert
 AFTER INSERT ON carrera
