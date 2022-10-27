@@ -346,10 +346,247 @@ END $$
 
 
 
+/*             Horario Curso Habilitado                   */
+
+DELIMITER $$
+CREATE FUNCTION validarDiasSemana(
+    dia INT
+)
+RETURNS BOOLEAN
+DETERMINISTIC
+BEGIN
+DECLARE valido BOOLEAN;
+IF (SELECT REGEXP_INSTR(dia, '^[1-7]$') = 1) THEN
+    SELECT TRUE INTO valido;
+ELSE
+    SELECT FALSE INTO valido;
+end if;
+RETURN (valido);
+END $$
+
+DELIMITER $$
+CREATE FUNCTION existeIdCursoHabilitado(
+    idcursohabilitado INT
+)
+RETURNS BOOLEAN
+DETERMINISTIC
+BEGIN
+DECLARE existe BOOLEAN;
+SELECT EXISTS(SELECT 1 FROM cursohabilitado ch WHERE ch.idcursohabilitado = idcursohabilitado) INTO existe;
+RETURN (existe);
+END $$
+
+
+DELIMITER $$
+CREATE PROCEDURE addHorarioCursoHabilitado(
+    IN idcursohabilitado_in INT,
+    IN dia_in INT,
+    IN horario_in VARCHAR(100)
+)
+addhorario:BEGIN
+
+IF (NOT existeIdCursoHabilitado(idcursohabilitado_in)) THEN
+    SELECT 'El id del curso habilitado no existe' AS ERROR;
+    LEAVE addhorario;
+end if;
+
+IF (NOT validarDiasSemana(dia_in)) THEN
+    SELECT 'El dia no esta en el rango [1-7]' AS ERROR;
+    LEAVE addhorario;
+end if;
+
+INSERT INTO horariocurso(cursohabilitado_idcursohabilitado, dia, horario) VALUES
+(idcursohabilitado_in, dia_in, horario_in);
+SELECT 'El horario se agrego correctamente';
+END $$
 
 
 
+/*                  Asignacion Curso                        */
 
+DELIMITER $$
+CREATE FUNCTION ValidarAsignacionCiclo(
+    carnet INT,
+    codigo_curso INT,
+    ciclo VARCHAR(2),
+    anio INT
+)
+RETURNS BOOLEAN
+DETERMINISTIC
+BEGIN
+DECLARE existe BOOLEAN;
+
+SELECT EXISTS(
+    SELECT 1 FROM cursohabilitado ch, estudiante es, asignacioncurso a, curso cu
+    WHERE ch.idcursohabilitado = a.cursohabilitado_idcursohabilitado
+    AND a.estudiante_carnet = es.carnet
+    AND cu.codigo = ch.curso_codigo
+    AND es.carnet = carnet AND ch.curso_codigo = codigo_curso
+    AND ch.ciclo = ciclo AND ch.anio = anio
+) INTO existe;
+RETURN (existe);
+END $$
+
+
+
+DELIMITER $$
+CREATE PROCEDURE addAsignacionCurso(
+    IN idcursohabilitado_in INT,
+    IN carnet_in INT
+)
+add_asignacion:BEGIN
+DECLARE status_existe TINYINT;
+DECLARE asignados_temp INT;
+DECLARE cupo_temp INT;
+DECLARE carrera_curso INT;
+DECLARE carrera_estudiante INT;
+DECLARE creditos_nec INT;
+DECLARE creditos_estudiante INT;
+DECLARE codigo_chabilitado INT;
+DECLARE ciclo_chabilitado VARCHAR(2);
+DECLARE anio_chabilitado INT;
+
+IF (NOT existeIdCursoHabilitado(idcursohabilitado_in)) THEN
+    SELECT 'El id del curso habilitado no existe' AS ERROR;
+    LEAVE add_asignacion;
+END IF;
+
+IF (NOT ExisteEstudiante(carnet_in)) THEN
+    SELECT CONCAT('El carnet ', carnet_in, ' no existe') AS ERROR;
+    LEAVE add_asignacion;
+END IF;
+
+SELECT c.idcarrera INTO carrera_estudiante
+FROM estudiante es, carrera c
+WHERE es.carrera_idcarrera = c.idcarrera
+AND es.carnet = carnet_in;
+
+SELECT c.idcarrera INTO carrera_curso
+FROM carrera c, curso cu, cursohabilitado ch
+WHERE c.idcarrera = cu.carrera_idcarrera
+AND cu.codigo = ch.curso_codigo
+AND ch.idcursohabilitado = idcursohabilitado_in;
+
+IF (carrera_curso != carrera_estudiante AND carrera_curso != 1) THEN
+    SELECT 'El estudiante no se puede asignar un curso de otra carrera' AS ERROR;
+    LEAVE add_asignacion;
+END IF;
+
+SELECT cu.creditos_necesarios INTO creditos_nec
+FROM curso cu, cursohabilitado ch
+WHERE cu.codigo = ch.curso_codigo
+AND ch.idcursohabilitado = idcursohabilitado_in;
+
+SELECT es.creditos INTO creditos_estudiante
+FROM estudiante es
+WHERE es.carnet = carnet_in;
+
+IF (creditos_nec > creditos_estudiante) THEN
+    SELECT 'No cuenta con los creditos necesarios para asignarse al curso' AS ERROR;
+    LEAVE add_asignacion;
+END IF;
+
+SELECT a.status INTO status_existe
+FROM asignacioncurso a
+WHERE a.estudiante_carnet = carnet_in AND a.status = 1
+AND cursohabilitado_idcursohabilitado = idcursohabilitado_in;
+
+IF (status_existe = 1) THEN
+    SELECT CONCAT('El estudiante ', carnet_in, ' ya se encuentra asignado en la sección') AS ERROR;
+    LEAVE add_asignacion;
+END IF;
+
+SELECT ch.curso_codigo, ch.ciclo, ch.anio
+INTO codigo_chabilitado, ciclo_chabilitado, anio_chabilitado
+FROM cursohabilitado ch
+WHERE ch.idcursohabilitado = idcursohabilitado_in;
+
+IF (ValidarAsignacionCiclo(carnet_in, codigo_chabilitado, ciclo_chabilitado, anio_chabilitado)) THEN
+    SELECT 'No puede asignarser dos veces el mismo curso en un ciclo' AS ERROR;
+    LEAVE add_asignacion;
+END IF;
+
+SELECT ch.cupo INTO cupo_temp
+FROM cursohabilitado ch
+WHERE ch.idcursohabilitado = idcursohabilitado_in;
+
+SELECT ch.asignados INTO asignados_temp
+FROM cursohabilitado ch
+WHERE ch.idcursohabilitado = idcursohabilitado_in;
+
+IF (asignados_temp = cupo_temp) THEN
+    SELECT 'Se alcanzo el cupo maximo del curso, no puede asignarse' AS ERROR;
+    LEAVE add_asignacion;
+END IF;
+
+SET asignados_temp = asignados_temp + 1;
+UPDATE cursohabilitado SET asignados = asignados_temp
+WHERE idcursohabilitado = idcursohabilitado_in;
+
+INSERT INTO asignacioncurso(cursohabilitado_idcursohabilitado, estudiante_carnet, status)
+VALUES (idcursohabilitado_in, carnet_in, 1);
+
+SELECT 'El estudiante se asigno correctamente';
+
+END $$
+
+
+
+/*                              Desasignacion                                              */
+
+DELIMITER $$
+CREATE PROCEDURE addDesasignacionCurso(
+    IN idcursohabilitado_in INT,
+    IN carnet_in INT
+)
+add_desasignacion:BEGIN
+
+DECLARE asignados_temp INT;
+DECLARE status_temp TINYINT;
+
+IF (NOT existeIdCursoHabilitado(idcursohabilitado_in)) THEN
+    SELECT 'El id del curso habilitado no existe' AS ERROR;
+    LEAVE add_desasignacion;
+END IF;
+
+IF (NOT ExisteEstudiante(carnet_in)) THEN
+    SELECT CONCAT('El estudiante ', carnet_in, ' no existe') AS ERROR;
+    LEAVE add_desasignacion;
+END IF;
+
+SELECT a.status INTO status_temp
+FROM cursohabilitado ch, estudiante es, asignacioncurso a
+WHERE ch.idcursohabilitado = a.cursohabilitado_idcursohabilitado
+AND a.estudiante_carnet = es.carnet
+AND ch.idcursohabilitado = idcursohabilitado_in
+AND es.carnet = carnet_in;
+
+IF (status_temp = 0) THEN
+    SELECT 'El estudiante no se encuentra asignado' AS ERROR;
+    LEAVE add_desasignacion;
+END IF;
+
+SELECT ch.asignados INTO asignados_temp
+FROM cursohabilitado ch
+WHERE ch.idcursohabilitado = idcursohabilitado_in;
+
+SET asignados_temp = asignados_temp - 1;
+UPDATE cursohabilitado SET asignados = asignados_temp
+WHERE idcursohabilitado = idcursohabilitado_in;
+
+UPDATE asignacioncurso a, estudiante e, cursohabilitado ch SET status = 0
+WHERE ch.idcursohabilitado = a.cursohabilitado_idcursohabilitado
+AND a.estudiante_carnet = e.carnet
+AND ch.idcursohabilitado = idcursohabilitado_in
+AND e.carnet = carnet_in
+;
+
+INSERT INTO desasignacioncurso(cursohabilitado_idcursohabilitado, estudiante_carnet)
+VALUES (idcursohabilitado_in, carnet_in);
+
+SELECT 'El estudiante se desasigno correctamente' AS MENSAJE;
+
+END $$
 
 
 
