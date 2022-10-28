@@ -731,10 +731,259 @@ END $$
 
 /*             Bitacora                   */
 
+
+CREATE TABLE bitacora(
+    idbitacora INT NOT NULL AUTO_INCREMENT,
+    fecha_hora DATETIME,
+    descripcion VARCHAR(150),
+    tabla VARCHAR(50),
+    PRIMARY KEY (idbitacora)
+);
+
+
+/*                      Triggers                                */
+
 DELIMITER $$
-CREATE TRIGGER bitacora_carrera_insert
+CREATE TRIGGER bitacora_estudianteinsert
+AFTER INSERT ON estudiante
+FOR EACH ROW
+BEGIN
+    INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se inserto un nuevo registro', 'estudiante');
+END $$
+
+DELIMITER $$
+CREATE TRIGGER bitacora_estudianteupdate
+AFTER UPDATE ON estudiante
+FOR EACH ROW
+BEGIN
+    INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se actualizo un registro', 'estudiante');
+END $$
+
+DELIMITER $$
+CREATE TRIGGER bitacora_estudiantedelete
+AFTER DELETE ON estudiante
+FOR EACH ROW
+BEGIN
+    INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se elimino un registro', 'estudiante');
+END $$
+
+DELIMITER $$
+CREATE TRIGGER bitacora_carrerainsert
 AFTER INSERT ON carrera
 FOR EACH ROW
 BEGIN
     INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se inserto un nuevo registro', 'carrera');
 END $$
+
+DELIMITER $$
+CREATE TRIGGER bitacora_carrerateupdate
+AFTER UPDATE ON carrera
+FOR EACH ROW
+BEGIN
+    INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se actualizo un registro', 'carrera');
+END $$
+
+DELIMITER $$
+CREATE TRIGGER bitacora_carreradelete
+AFTER DELETE ON carrera
+FOR EACH ROW
+BEGIN
+    INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se elimino un registro', 'carrera');
+END $$
+
+DELIMITER $$
+CREATE TRIGGER bitacora_docenteinsert
+AFTER INSERT ON docente
+FOR EACH ROW
+BEGIN
+    INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se inserto un nuevo registro', 'docente');
+END $$
+
+DELIMITER $$
+CREATE TRIGGER bitacora_docenteteupdate
+AFTER UPDATE ON docente
+FOR EACH ROW
+BEGIN
+    INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se actualizo un registro', 'docente');
+END $$
+
+DELIMITER $$
+CREATE TRIGGER bitacora_docentedelete
+AFTER DELETE ON docente
+FOR EACH ROW
+BEGIN
+    INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se elimino un registro', 'docente');
+END $$
+
+DELIMITER $$
+CREATE TRIGGER bitacora_cursoinsert
+AFTER INSERT ON curso
+FOR EACH ROW
+BEGIN
+    INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se inserto un nuevo registro', 'curso');
+END $$
+
+DELIMITER $$
+CREATE TRIGGER bitacora_cursoupdate
+AFTER UPDATE ON curso
+FOR EACH ROW
+BEGIN
+    INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se actualizo un registro', 'curso');
+END $$
+
+DELIMITER $$
+CREATE TRIGGER bitacora_cursodelete
+AFTER DELETE ON curso
+FOR EACH ROW
+BEGIN
+    INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se elimino un registro', 'curso');
+END $$
+
+DELIMITER $$
+CREATE TRIGGER bitacora_cursohabilitadoinsert
+AFTER INSERT ON cursohabilitado
+FOR EACH ROW
+BEGIN
+    INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se inserto un nuevo registro', 'cursohabilitado');
+END $$
+
+DELIMITER $$
+CREATE TRIGGER bitacora_cursohabilitadoupdate
+AFTER UPDATE ON cursohabilitado
+FOR EACH ROW
+BEGIN
+    INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se actualizo un registro', 'cursohabilitado');
+END $$
+
+DELIMITER $$
+CREATE TRIGGER bitacora_cursohabilitadodelete
+AFTER DELETE ON cursohabilitado
+FOR EACH ROW
+BEGIN
+    INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se elimino un registro', 'cursohabilitado');
+END $$
+
+
+DELIMITER $$
+CREATE TRIGGER bitacora_asignacioninsert
+AFTER INSERT ON asignacioncurso
+FOR EACH ROW
+BEGIN
+    INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se inserto un nuevo registro', 'asignacioncurso');
+END $$
+
+DELIMITER $$
+CREATE TRIGGER bitacora_asignacionupdate
+AFTER UPDATE ON asignacioncurso
+FOR EACH ROW
+BEGIN
+    INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se actualizo un registro', 'asignacioncurso');
+END $$
+
+DELIMITER $$
+CREATE TRIGGER bitacora_asignaciondelete
+AFTER DELETE ON asignacioncurso
+FOR EACH ROW
+BEGIN
+    INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se elimino un registro', 'asignacioncurso');
+END $$
+
+DELIMITER $$
+CREATE TRIGGER bitacora_horarioinsert
+AFTER INSERT ON horariocurso
+FOR EACH ROW
+BEGIN
+    INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se inserto un nuevo registro', 'horariocurso');
+END $$
+
+DELIMITER $$
+CREATE TRIGGER bitacora_horarioupdate
+AFTER UPDATE ON horariocurso
+FOR EACH ROW
+BEGIN
+    INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se actualizo un registro', 'horariocurso');
+END $$
+
+DELIMITER $$
+CREATE TRIGGER bitacora_horariodelete
+AFTER DELETE ON horariocurso
+FOR EACH ROW
+BEGIN
+    INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se elimino un registro', 'horariocurso');
+END $$
+
+
+DELIMITER $$
+CREATE TRIGGER bitacora_desasignacioninsert
+AFTER INSERT ON desasignacioncurso
+FOR EACH ROW
+BEGIN
+    INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se inserto un nuevo registro', 'desasignacioncurso');
+END $$
+
+DELIMITER $$
+CREATE TRIGGER bitacora_desasignacionupdate
+AFTER UPDATE ON desasignacioncurso
+FOR EACH ROW
+BEGIN
+    INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se actualizo un registro', 'desasignacioncurso');
+END $$
+
+DELIMITER $$
+CREATE TRIGGER bitacora_desasignaciondelete
+AFTER DELETE ON desasignacioncurso
+FOR EACH ROW
+BEGIN
+    INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se elimino un registro', 'desasignacioncurso');
+END $$
+
+DELIMITER $$
+CREATE TRIGGER bitacora_notasinsert
+AFTER INSERT ON notas
+FOR EACH ROW
+BEGIN
+    INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se inserto un nuevo registro', 'notas');
+END $$
+
+DELIMITER $$
+CREATE TRIGGER bitacora_notasupdate
+AFTER UPDATE ON notas
+FOR EACH ROW
+BEGIN
+    INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se actualizo un registro', 'notas');
+END $$
+
+DELIMITER $$
+CREATE TRIGGER bitacora_notasdelete
+AFTER DELETE ON notas
+FOR EACH ROW
+BEGIN
+    INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se elimino un registro', 'notas');
+END $$
+
+DELIMITER $$
+CREATE TRIGGER bitacora_actasinsert
+AFTER INSERT ON actas
+FOR EACH ROW
+BEGIN
+    INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se inserto un nuevo registro', 'actas');
+END $$
+
+DELIMITER $$
+CREATE TRIGGER bitacora_actasupdate
+AFTER UPDATE ON actas
+FOR EACH ROW
+BEGIN
+    INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se actualizo un registro', 'actas');
+END $$
+
+DELIMITER $$
+CREATE TRIGGER bitacora_actasdelete
+AFTER DELETE ON actas
+FOR EACH ROW
+BEGIN
+    INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se elimino un registro', 'actas');
+END $$
+
+
+
