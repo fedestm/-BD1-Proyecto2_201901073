@@ -566,7 +566,7 @@ END $$
 DELIMITER $$
 CREATE PROCEDURE addDesasignacionCurso(
     IN codigo_in INT,
-    IN ciclo_in INT,
+    IN ciclo_in VARCHAR(2),
     IN seccion_in VARCHAR(1),
     IN carnet_in BIGINT
 )
@@ -646,6 +646,27 @@ END $$
 
 
 /*                                 Notas                                       */
+
+DELIMITER $$
+CREATE FUNCTION ExisteNotaCurso(
+    idcursohabilitado INT,
+    carnet BIGINT
+)
+RETURNS BOOLEAN
+DETERMINISTIC
+BEGIN
+DECLARE existe BOOLEAN;
+
+SELECT EXISTS(
+    SELECT 1 FROM cursohabilitado ch, estudiante e, notas n
+    WHERE ch.idcursohabilitado = n.cursohabilitado_idcursohabilitado
+    AND n.estudiante_carnet = e.carnet
+    AND ch.idcursohabilitado = idcursohabilitado
+    AND e.carnet = carnet
+           ) INTO existe;
+
+RETURN (existe);
+END $$
 
 DELIMITER $$
 CREATE PROCEDURE addNotaCurso(
@@ -786,7 +807,7 @@ AND ch.ciclo = ciclo_in
 AND ch.anio = anio_actual
 AND ch.seccion = seccion_in;
 
-IF (existeIdCursoHabilitado(idcursohabilitado_temp)) THEN
+IF (NOT existeIdCursoHabilitado(idcursohabilitado_temp)) THEN
     SELECT 'El curso habilitado no existe' AS ERROR;
     LEAVE add_acta;
 END IF;
@@ -1055,4 +1076,193 @@ BEGIN
 END $$
 
 
+DELIMITER $$
+CREATE PROCEDURE consultarPensum(
+    IN codigocarrera_in INT
+)
+consultar_pensum:BEGIN
 
+SELECT cu.codigo, cu.nombre,
+       CASE WHEN cu.obligatorio = 1 THEN 'Si' ELSE 'No' END AS obligatorio,
+       cu.creditos_necesarios
+FROM carrera c, curso cu
+WHERE c.idcarrera = cu.carrera_idcarrera
+AND c.idcarrera = codigocarrera_in;
+
+END $$
+
+
+DELIMITER $$
+CREATE PROCEDURE consultarEstudiante(
+    IN carnet_in BIGINT
+)
+consultar_estudiante:BEGIN
+
+IF (NOT ExisteEstudiante(carnet_in)) THEN
+    SELECT CONCAT('El estudiante ', carnet_in, ' no existe') AS ERROR;
+    LEAVE consultar_estudiante;
+END IF;
+
+SELECT e.carnet, CONCAT(e.nombres, ' ', e.apellidos) AS nombres, e.fecha_nac, e.correo,
+e.telefono, e.direccion, e.dpi, c.nombre as carrera, e.creditos
+FROM estudiante e, carrera c
+WHERE e.carrera_idcarrera = c.idcarrera
+AND e.carnet = carnet_in
+;
+END $$
+
+
+DELIMITER $$
+CREATE PROCEDURE consultarDocente(
+    IN siif_in INT
+)
+consultar_docente:BEGIN
+
+IF (NOT ExisteDocente(siif_in)) THEN
+    SELECT 'El docente no existe' AS ERROR;
+    LEAVE consultar_docente;
+END IF;
+
+SELECT d.siif, CONCAT(d.nombres, ' ', d.apellidos) AS nombres, d.fecha_nac,
+       d.correo, d.telefono, d.direccion, d.dpi
+FROM docente d
+WHERE d.siif = siif_in;
+
+END $$
+
+
+DELIMITER $$
+CREATE PROCEDURE consultarEstudiantesAsignados(
+    IN codigocurso_in INT,
+    IN ciclo_in VARCHAR(2),
+    IN anio_in INT,
+    IN seccion_in VARCHAR(1)
+)
+consultar_asignados:BEGIN
+
+IF (NOT ExisteCurso(codigocurso_in)) THEN
+    SELECT CONCAT('El codigo del curso ', codigocurso_in, ' no existe') AS ERROR;
+    LEAVE consultar_asignados;
+END IF;
+
+IF (NOT validarCiclo(ciclo_in)) THEN
+    SELECT 'El formato del ciclo no es valido' AS ERROR;
+    LEAVE consultar_asignados;
+END IF;
+
+IF (NOT validarLetraSeccion(seccion_in)) THEN
+    SELECT 'La seccion debe ser una letra' AS ERROR;
+    LEAVE consultar_asignados;
+END IF;
+
+SELECT e.carnet, CONCAT(e.nombres, ' ', e.apellidos) AS nombres, e.creditos
+FROM cursohabilitado ch, asignacioncurso a, estudiante e
+WHERE ch.idcursohabilitado = a.cursohabilitado_idcursohabilitado
+AND a.estudiante_carnet = e.carnet
+AND ch.curso_codigo = codigocurso_in
+AND ch.anio = anio_in
+AND ch.seccion = seccion_in
+AND a.status = 1
+;
+END $$
+
+
+
+DELIMITER $$
+CREATE PROCEDURE consultarAprobacion(
+    IN codigocurso_in INT,
+    IN ciclo_in VARCHAR(2),
+    IN anio_in INT,
+    IN seccion_in VARCHAR(1)
+)
+consultar_aprobados:BEGIN
+
+IF (NOT ExisteCurso(codigocurso_in)) THEN
+    SELECT CONCAT('El curso ', codigocurso_in, ' no existe') AS ERROR;
+    LEAVE consultar_aprobados;
+END IF;
+
+IF (NOT validarCiclo(ciclo_in)) THEN
+    SELECT 'El formato del ciclo no es valido' AS ERROR;
+    LEAVE consultar_aprobados;
+END IF;
+
+IF (NOT validarLetraSeccion(seccion_in)) THEN
+    SELECT 'La seccion debe ser una letra' AS ERROR;
+    LEAVE consultar_aprobados;
+END IF;
+
+SELECT ch.curso_codigo, e.carnet, CONCAT(e.nombres, ' ', e.apellidos) AS nombres,
+       n.nota, CASE WHEN n.nota >= 61 THEN 'APROBADO' ELSE 'DESAPROBADO' END AS estado
+FROM cursohabilitado ch, estudiante e, notas n
+WHERE ch.idcursohabilitado = n.cursohabilitado_idcursohabilitado
+AND n.estudiante_carnet = e.carnet
+AND ch.curso_codigo = codigocurso_in
+AND ch.ciclo = ciclo_in
+AND ch.anio = anio_in
+AND ch.seccion = seccion_in
+;
+END $$
+
+
+DELIMITER $$
+CREATE PROCEDURE consultarActas(
+    IN codigocurso_in INT
+)
+consultar_actas:BEGIN
+
+IF (NOT ExisteCurso(codigocurso_in)) THEN
+    SELECT CONCAT('El curso ', codigocurso_in, ' no existe') AS ERROR;
+    LEAVE consultar_actas;
+END IF;
+
+SELECT ch.curso_codigo, ch.seccion,
+       (CASE WHEN ch.ciclo = '1S' THEN 'PRIMER SEMESTRE'
+            WHEN ch.ciclo = 'VJ' THEN 'VACACIONES DE JUNIO'
+            WHEN ch.ciclo = '2S' THEN 'SEGUNDO SEMESTRE'
+            WHEN ch.ciclo = 'VD' THEN 'VACACIONES DE DICIEMBRE'
+        END) AS ciclo, ch.anio, a.fecha_creacion,
+        (SELECT COUNT(*) FROM cursohabilitado ch, notas n
+            WHERE ch.idcursohabilitado = n.cursohabilitado_idcursohabilitado) AS cantidad_notas
+FROM cursohabilitado ch, actas a
+WHERE ch.idcursohabilitado = a.cursohabilitado_idcursohabilitado
+AND ch.curso_codigo = codigocurso_in
+;
+
+END $$
+
+
+DELIMITER $$
+CREATE PROCEDURE consultarTasaDesasignacion(
+    IN codigocurso_in INT,
+    IN ciclo_in VARCHAR(2),
+    IN anio_in INT,
+    IN seccion_in VARCHAR(1)
+)
+consultar_tasa:BEGIN
+SELECT ch.curso_codigo, ch.seccion,
+       (CASE WHEN ch.ciclo = '1S' THEN 'PRIMER SEMESTRE'
+           WHEN ch.ciclo = 'VJ' THEN 'VACACIONES DE JUNIO'
+           WHEN ch.ciclo = '2S' THEN 'SEGUNDO SEMESTRE'
+           WHEN ch.ciclo = 'VD' THEN 'VACACIONES DE DICIEMBRE' END) AS ciclo,
+    ch.anio,
+    (SELECT COUNT(*) FROM cursohabilitado ch, asignacioncurso a
+                     WHERE a.cursohabilitado_idcursohabilitado = ch.idcursohabilitado
+                     AND a.status = 1) as asignados,
+    (SELECT COUNT(*) FROM cursohabilitado ch, asignacioncurso a
+                     WHERE a.cursohabilitado_idcursohabilitado = ch.idcursohabilitado
+                     AND a.status = 0) as desasignados,
+    ((SELECT COUNT(*) FROM cursohabilitado ch, asignacioncurso a
+                     WHERE a.cursohabilitado_idcursohabilitado = ch.idcursohabilitado
+                     AND a.status = 0)
+    /(SELECT COUNT(*) FROM cursohabilitado ch, asignacioncurso a
+                     WHERE a.cursohabilitado_idcursohabilitado = ch.idcursohabilitado
+                     AND a.status = 1)
+     )*100 AS porcentaje_desasignacion
+FROM cursohabilitado ch
+WHERE ch.curso_codigo = codigocurso_in
+AND ch.ciclo = ciclo_in
+AND ch.anio = anio_in
+AND ch.seccion = seccion_in
+;
+END $$
