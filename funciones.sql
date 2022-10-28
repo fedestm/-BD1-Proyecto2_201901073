@@ -340,7 +340,7 @@ end if;
 INSERT INTO cursohabilitado(curso_codigo, ciclo, docente_siif, cupo, seccion, anio, asignados) VALUES
 (cursocodigo_in, UPPER(ciclo_in), docente_in, cupo_in, UPPER(seccion_in), anio, 0);
 
-SELECT CONCAT('El curso ', cursocodigo_in, ' se habilito correctamente');
+SELECT CONCAT('El curso ', cursocodigo_in, ' se habilito correctamente') AS MENSAJE;
 END $$
 
 
@@ -397,7 +397,7 @@ end if;
 
 INSERT INTO horariocurso(cursohabilitado_idcursohabilitado, dia, horario) VALUES
 (idcursohabilitado_in, dia_in, horario_in);
-SELECT 'El horario se agrego correctamente';
+SELECT 'El horario se agrego correctamente' AS MENSAJE;
 END $$
 
 
@@ -431,7 +431,9 @@ END $$
 
 DELIMITER $$
 CREATE PROCEDURE addAsignacionCurso(
-    IN idcursohabilitado_in INT,
+    IN codigo_in INT,
+    IN ciclo_in VARCHAR(2),
+    IN seccion_in VARCHAR(1),
     IN carnet_in BIGINT
 )
 add_asignacion:BEGIN
@@ -445,9 +447,36 @@ DECLARE creditos_estudiante INT;
 DECLARE codigo_chabilitado INT;
 DECLARE ciclo_chabilitado VARCHAR(2);
 DECLARE anio_chabilitado INT;
+DECLARE anio_actual INT;
+DECLARE idcursohabilitado_temp INT;
 
-IF (NOT existeIdCursoHabilitado(idcursohabilitado_in)) THEN
-    SELECT 'El id del curso habilitado no existe' AS ERROR;
+IF (NOT ExisteCurso(codigo_in)) THEN
+    SELECT CONCAT('El curso ', codigo_in, ' no existe') AS ERROR;
+    LEAVE add_asignacion;
+END IF;
+
+IF (NOT validarCiclo(ciclo_in)) THEN
+    SELECT 'El formato del ciclo no es valido' AS ERROR;
+    LEAVE add_asignacion;
+END IF;
+
+IF (NOT validarLetraSeccion(seccion_in)) THEN
+    SELECT 'La sección debe ser una letra' AS ERROR;
+    LEAVE add_asignacion;
+END IF;
+
+SET anio_actual = EXTRACT(YEAR FROM CURDATE());
+
+SELECT ch.idcursohabilitado INTO idcursohabilitado_temp
+FROM cursohabilitado ch
+WHERE ch.curso_codigo = codigo_in
+AND ch.ciclo = ciclo_in
+AND ch.anio = anio_actual
+AND ch.seccion = seccion_in
+;
+
+IF (NOT existeIdCursoHabilitado(idcursohabilitado_temp)) THEN
+    SELECT 'El curso habilitado no existe' AS ERROR;
     LEAVE add_asignacion;
 END IF;
 
@@ -465,7 +494,7 @@ SELECT c.idcarrera INTO carrera_curso
 FROM carrera c, curso cu, cursohabilitado ch
 WHERE c.idcarrera = cu.carrera_idcarrera
 AND cu.codigo = ch.curso_codigo
-AND ch.idcursohabilitado = idcursohabilitado_in;
+AND ch.idcursohabilitado = idcursohabilitado_temp;
 
 IF (carrera_curso != carrera_estudiante AND carrera_curso != 1) THEN
     SELECT 'El estudiante no se puede asignar un curso de otra carrera' AS ERROR;
@@ -475,7 +504,7 @@ END IF;
 SELECT cu.creditos_necesarios INTO creditos_nec
 FROM curso cu, cursohabilitado ch
 WHERE cu.codigo = ch.curso_codigo
-AND ch.idcursohabilitado = idcursohabilitado_in;
+AND ch.idcursohabilitado = idcursohabilitado_temp;
 
 SELECT es.creditos INTO creditos_estudiante
 FROM estudiante es
@@ -489,7 +518,7 @@ END IF;
 SELECT a.status INTO status_existe
 FROM asignacioncurso a
 WHERE a.estudiante_carnet = carnet_in AND a.status = 1
-AND cursohabilitado_idcursohabilitado = idcursohabilitado_in;
+AND cursohabilitado_idcursohabilitado = idcursohabilitado_temp;
 
 IF (status_existe = 1) THEN
     SELECT CONCAT('El estudiante ', carnet_in, ' ya se encuentra asignado en la sección') AS ERROR;
@@ -499,7 +528,7 @@ END IF;
 SELECT ch.curso_codigo, ch.ciclo, ch.anio
 INTO codigo_chabilitado, ciclo_chabilitado, anio_chabilitado
 FROM cursohabilitado ch
-WHERE ch.idcursohabilitado = idcursohabilitado_in;
+WHERE ch.idcursohabilitado = idcursohabilitado_temp;
 
 IF (ValidarAsignacionCiclo(carnet_in, codigo_chabilitado, ciclo_chabilitado, anio_chabilitado)) THEN
     SELECT 'No puede asignarser dos veces el mismo curso en un ciclo' AS ERROR;
@@ -508,11 +537,11 @@ END IF;
 
 SELECT ch.cupo INTO cupo_temp
 FROM cursohabilitado ch
-WHERE ch.idcursohabilitado = idcursohabilitado_in;
+WHERE ch.idcursohabilitado = idcursohabilitado_temp;
 
 SELECT ch.asignados INTO asignados_temp
 FROM cursohabilitado ch
-WHERE ch.idcursohabilitado = idcursohabilitado_in;
+WHERE ch.idcursohabilitado = idcursohabilitado_temp;
 
 IF (asignados_temp = cupo_temp) THEN
     SELECT 'Se alcanzo el cupo maximo del curso, no puede asignarse' AS ERROR;
@@ -521,12 +550,12 @@ END IF;
 
 SET asignados_temp = asignados_temp + 1;
 UPDATE cursohabilitado SET asignados = asignados_temp
-WHERE idcursohabilitado = idcursohabilitado_in;
+WHERE idcursohabilitado = idcursohabilitado_temp;
 
 INSERT INTO asignacioncurso(cursohabilitado_idcursohabilitado, estudiante_carnet, status)
-VALUES (idcursohabilitado_in, carnet_in, 1);
+VALUES (idcursohabilitado_temp, carnet_in, 1);
 
-SELECT 'El estudiante se asigno correctamente';
+SELECT 'El estudiante se asigno correctamente' AS MENSAJE;
 
 END $$
 
@@ -536,16 +565,45 @@ END $$
 
 DELIMITER $$
 CREATE PROCEDURE addDesasignacionCurso(
-    IN idcursohabilitado_in INT,
+    IN codigo_in INT,
+    IN ciclo_in INT,
+    IN seccion_in VARCHAR(1),
     IN carnet_in BIGINT
 )
 add_desasignacion:BEGIN
 
 DECLARE asignados_temp INT;
 DECLARE status_temp TINYINT;
+DECLARE anio_actual INT;
+DECLARE idcursohabilitado_temp INT;
 
-IF (NOT existeIdCursoHabilitado(idcursohabilitado_in)) THEN
-    SELECT 'El id del curso habilitado no existe' AS ERROR;
+IF (NOT ExisteCurso(codigo_in)) THEN
+    SELECT CONCAT('El curso ', codigo_in, ' no existe') AS ERROR;
+    LEAVE add_desasignacion;
+END IF;
+
+IF (NOT validarCiclo(ciclo_in)) THEN
+    SELECT 'El formato del ciclo no es valido' AS ERROR;
+    LEAVE add_desasignacion;
+END IF;
+
+IF (NOT validarLetraSeccion(seccion_in)) THEN
+    SELECT 'La sección debe ser una letra' AS ERORR;
+    LEAVE add_desasignacion;
+END IF;
+
+SET anio_actual = EXTRACT(YEAR FROM CURDATE());
+
+SELECT ch.idcursohabilitado INTO idcursohabilitado_temp
+FROM cursohabilitado ch
+WHERE ch.curso_codigo = codigo_in
+AND ch.ciclo = ciclo_in
+AND ch.anio = anio_actual
+AND ch.seccion = seccion_in
+;
+
+IF (NOT existeIdCursoHabilitado(idcursohabilitado_temp)) THEN
+    SELECT 'El curso habilitado no existe' AS ERROR;
     LEAVE add_desasignacion;
 END IF;
 
@@ -558,7 +616,7 @@ SELECT a.status INTO status_temp
 FROM cursohabilitado ch, estudiante es, asignacioncurso a
 WHERE ch.idcursohabilitado = a.cursohabilitado_idcursohabilitado
 AND a.estudiante_carnet = es.carnet
-AND ch.idcursohabilitado = idcursohabilitado_in
+AND ch.idcursohabilitado = idcursohabilitado_temp
 AND es.carnet = carnet_in;
 
 IF (status_temp = 0) THEN
@@ -568,21 +626,18 @@ END IF;
 
 SELECT ch.asignados INTO asignados_temp
 FROM cursohabilitado ch
-WHERE ch.idcursohabilitado = idcursohabilitado_in;
+WHERE ch.idcursohabilitado = idcursohabilitado_temp;
 
 SET asignados_temp = asignados_temp - 1;
 UPDATE cursohabilitado SET asignados = asignados_temp
-WHERE idcursohabilitado = idcursohabilitado_in;
+WHERE idcursohabilitado = idcursohabilitado_temp;
 
 UPDATE asignacioncurso a, estudiante e, cursohabilitado ch SET status = 0
 WHERE ch.idcursohabilitado = a.cursohabilitado_idcursohabilitado
 AND a.estudiante_carnet = e.carnet
-AND ch.idcursohabilitado = idcursohabilitado_in
+AND ch.idcursohabilitado = idcursohabilitado_temp
 AND e.carnet = carnet_in
 ;
-
-INSERT INTO desasignacioncurso(cursohabilitado_idcursohabilitado, estudiante_carnet)
-VALUES (idcursohabilitado_in, carnet_in);
 
 SELECT 'El estudiante se desasigno correctamente' AS MENSAJE;
 
@@ -593,30 +648,10 @@ END $$
 /*                                 Notas                                       */
 
 DELIMITER $$
-CREATE FUNCTION ExisteNotaCurso(
-    idcursohabilitado INT,
-    carnet BIGINT
-)
-RETURNS BOOLEAN
-DETERMINISTIC
-BEGIN
-DECLARE existe BOOLEAN;
-
-SELECT EXISTS(
-    SELECT 1 FROM cursohabilitado ch, estudiante e, notas n
-    WHERE ch.idcursohabilitado = n.cursohabilitado_idcursohabilitado
-    AND n.estudiante_carnet = e.carnet
-    AND ch.idcursohabilitado = idcursohabilitado
-    AND e.carnet = carnet
-           ) INTO existe;
-
-RETURN (existe);
-END $$
-
-
-DELIMITER $$
 CREATE PROCEDURE addNotaCurso(
-    IN idcursohabilitado_in INT,
+    IN codigo_in INT,
+    IN ciclo_in VARCHAR(2),
+    IN seccion_in VARCHAR(1),
     IN carnet_in BIGINT,
     IN nota_in DECIMAL
 )
@@ -624,8 +659,34 @@ add_notas:BEGIN
 DECLARE creditos_otorgados INT;
 DECLARE nota_rounded INT;
 DECLARE creditos_estudiante INT;
+DECLARE anio_actual INT;
+DECLARE idcursohabilitado_temp INT;
 
-IF (NOT existeIdCursoHabilitado(idcursohabilitado_in)) THEN
+IF (NOT ExisteCurso(codigo_in)) THEN
+    SELECT 'El curso ', codigo_in, ' no existe' AS ERROR;
+    LEAVE add_notas;
+END IF;
+
+IF (NOT validarCiclo(ciclo_in)) THEN
+    SELECT 'El formato del ciclo no es valido' AS ERROR;
+    LEAVE add_notas;
+END IF;
+
+IF (NOT validarLetraSeccion(seccion_in)) THEN
+    SELECT 'La seccion debe ser una letra' AS ERROR;
+    LEAVE add_notas;
+END IF;
+
+SET anio_actual = EXTRACT(YEAR FROM CURDATE());
+
+SELECT ch.idcursohabilitado INTO idcursohabilitado_temp
+FROM cursohabilitado ch
+WHERE ch.curso_codigo = codigo_in
+AND ch.ciclo = ciclo_in
+AND ch.anio = anio_actual
+AND ch.seccion = seccion_in;
+
+IF (NOT existeIdCursoHabilitado(idcursohabilitado_temp)) THEN
     SELECT 'El id del curso habilitado no existe' AS ERROR;
     LEAVE add_notas;
 END IF;
@@ -635,7 +696,7 @@ IF (NOT ExisteEstudiante(carnet_in)) THEN
     LEAVE add_notas;
 END IF;
 
-IF (ExisteNotaCurso(idcursohabilitado_in, carnet_in)) THEN
+IF (ExisteNotaCurso(idcursohabilitado_temp, carnet_in)) THEN
     SELECT CONCAT('Ya existe una nota ingresada para el estudiante ', carnet_in) AS ERROR;
     LEAVE add_notas;
 END IF;
@@ -646,7 +707,7 @@ IF (nota_rounded >= 61) THEN
     SELECT c.creditos_otorgados INTO creditos_otorgados
     FROM cursohabilitado ch, curso c
     WHERE ch.curso_codigo = c.codigo
-    AND ch.idcursohabilitado = idcursohabilitado_in;
+    AND ch.idcursohabilitado = idcursohabilitado_temp;
 
     SELECT es.creditos INTO creditos_estudiante
     FROM estudiante es
@@ -659,7 +720,7 @@ IF (nota_rounded >= 61) THEN
 END IF;
 
 INSERT INTO notas(cursohabilitado_idcursohabilitado, estudiante_carnet, nota) VALUES
-(idcursohabilitado_in, carnet_in, nota_rounded);
+(idcursohabilitado_temp, carnet_in, nota_rounded);
 
 SELECT CONCAT('Se agrego la nota del estudiante ', carnet_in, ' correctamente') AS MENSAJE;
 
@@ -690,14 +751,47 @@ END $$
 
 DELIMITER $$
 CREATE PROCEDURE addActasCurso(
-    IN idcursohabilitado_in INT
+    IN codigo_in INT,
+    IN ciclo_in VARCHAR(2),
+    IN seccion_in VARCHAR(1)
 )
 add_acta:BEGIN
 DECLARE asignados INT;
 DECLARE notas_ingresadas INT;
 DECLARE cantidad INT;
+DECLARE anio_actual INT;
+DECLARE idcursohabilitado_temp INT;
 
-IF (existeActaCurso(idcursohabilitado_in)) THEN
+IF (NOT ExisteCurso(codigo_in)) THEN
+    SELECT CONCAT('El curso ', codigo_in, ' no existe') AS ERROR;
+    LEAVE add_acta;
+END IF;
+
+IF (NOT validarCiclo(ciclo_in)) THEN
+    SELECT 'El formato del ciclo no es valido' AS ERROR;
+    LEAVE add_acta;
+END IF;
+
+IF (NOT validarLetraSeccion(seccion_in)) THEN
+    SELECT 'La seccion debe ser una letra' AS ERROR;
+    LEAVE add_acta;
+END IF;
+
+SET anio_actual = EXTRACT(YEAR FROM CURDATE());
+
+SELECT ch.idcursohabilitado INTO idcursohabilitado_temp
+FROM cursohabilitado ch
+WHERE ch.curso_codigo = codigo_in
+AND ch.ciclo = ciclo_in
+AND ch.anio = anio_actual
+AND ch.seccion = seccion_in;
+
+IF (existeIdCursoHabilitado(idcursohabilitado_temp)) THEN
+    SELECT 'El curso habilitado no existe' AS ERROR;
+    LEAVE add_acta;
+END IF;
+
+IF (existeActaCurso(idcursohabilitado_temp)) THEN
     SELECT 'Ya existe un acta para dicho curso, no se puede modificar' AS ERROR;
     LEAVE add_acta;
 END IF;
@@ -705,13 +799,13 @@ END IF;
 SELECT COUNT(*) INTO asignados
 FROM cursohabilitado ch, asignacioncurso a
 WHERE ch.idcursohabilitado = a.cursohabilitado_idcursohabilitado
-AND ch.idcursohabilitado = idcursohabilitado_in
+AND ch.idcursohabilitado = idcursohabilitado_temp
 AND a.status = 1;
 
 SELECT COUNT(*) INTO notas_ingresadas
 FROM notas n, cursohabilitado ch
 WHERE n.cursohabilitado_idcursohabilitado = ch.idcursohabilitado
-AND n.cursohabilitado_idcursohabilitado = 7;
+AND n.cursohabilitado_idcursohabilitado = idcursohabilitado_temp;
 
 SET cantidad = asignados - notas_ingresadas;
 
@@ -721,7 +815,7 @@ IF (asignados != notas_ingresadas) THEN
 END IF;
 
 INSERT INTO actas(cursohabilitado_idcursohabilitado, fecha_creacion) VALUES
-(idcursohabilitado_in, SYSDATE());
+(idcursohabilitado_temp, SYSDATE());
 
 SELECT 'Se genero correctamente el acta del curso' AS MENSAJE;
 
@@ -910,31 +1004,6 @@ AFTER DELETE ON horariocurso
 FOR EACH ROW
 BEGIN
     INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se elimino un registro', 'horariocurso');
-END $$
-
-
-DELIMITER $$
-CREATE TRIGGER bitacora_desasignacioninsert
-AFTER INSERT ON desasignacioncurso
-FOR EACH ROW
-BEGIN
-    INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se inserto un nuevo registro', 'desasignacioncurso');
-END $$
-
-DELIMITER $$
-CREATE TRIGGER bitacora_desasignacionupdate
-AFTER UPDATE ON desasignacioncurso
-FOR EACH ROW
-BEGIN
-    INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se actualizo un registro', 'desasignacioncurso');
-END $$
-
-DELIMITER $$
-CREATE TRIGGER bitacora_desasignaciondelete
-AFTER DELETE ON desasignacioncurso
-FOR EACH ROW
-BEGIN
-    INSERT INTO bitacora(fecha_hora, descripcion, tabla) VALUES (SYSDATE(), 'Se elimino un registro', 'desasignacioncurso');
 END $$
 
 DELIMITER $$
