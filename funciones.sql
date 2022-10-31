@@ -696,6 +696,7 @@ RETURN (existe);
 END $$
 
 
+drop procedure addNotaCurso;
 DELIMITER $$
 CREATE PROCEDURE addNotaCurso(
     IN codigo_in INT,
@@ -763,8 +764,13 @@ END IF;
 
 SET nota_rounded = ROUND(nota_in);
 
-IF (NOT ValidarEnteroPositivo(nota_rounded) AND nota_rounded < 0 AND nota_rounded > 100) THEN
-    SELECT 'La nota debe ser un entero positivo y estar en el rango [0-100]' AS ERROR;
+IF (NOT ValidarEnteroPositivo(nota_rounded)) THEN
+    SELECT 'La nota debe ser un entero positivo' AS ERROR;
+    LEAVE add_notas;
+END IF;
+
+IF (nota_rounded < 0 OR nota_rounded > 100) THEN
+    SELECT 'La nota debe estar en el rango [0-100]' AS ERROR;
     LEAVE add_notas;
 END IF;
 
