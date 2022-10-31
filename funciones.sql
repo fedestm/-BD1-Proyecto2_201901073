@@ -423,9 +423,11 @@ SELECT EXISTS(
     AND cu.codigo = ch.curso_codigo
     AND es.carnet = carnet AND ch.curso_codigo = codigo_curso
     AND ch.ciclo = ciclo AND ch.anio = anio
+    AND a.status = 1
 ) INTO existe;
 RETURN (existe);
 END $$
+
 
 
 
@@ -496,7 +498,7 @@ WHERE c.idcarrera = cu.carrera_idcarrera
 AND cu.codigo = ch.curso_codigo
 AND ch.idcursohabilitado = idcursohabilitado_temp;
 
-IF (carrera_curso != carrera_estudiante AND carrera_curso != 1) THEN
+IF (carrera_curso != carrera_estudiante AND carrera_curso != 0) THEN
     SELECT 'El estudiante no se puede asignar un curso de otra carrera' AS ERROR;
     LEAVE add_asignacion;
 END IF;
@@ -564,6 +566,26 @@ END $$
 /*                              Desasignacion                                              */
 
 DELIMITER $$
+CREATE FUNCTION ExisteAsignacion(
+    idcursohabilitado INT,
+	carnet BIGINT
+)
+RETURNS BOOLEAN
+DETERMINISTIC
+BEGIN
+DECLARE existe BOOLEAN;
+-- Sentencias SQL
+SELECT EXISTS (
+    SELECT 1 FROM asignacioncurso a
+            WHERE a.estudiante_carnet = carnet AND a.status = 1
+            AND a.cursohabilitado_idcursohabilitado = idcursohabilitado
+           ) INTO existe;
+RETURN (existe);
+END
+$$
+
+
+DELIMITER $$
 CREATE PROCEDURE addDesasignacionCurso(
     IN codigo_in INT,
     IN ciclo_in VARCHAR(2),
@@ -624,6 +646,12 @@ IF (status_temp = 0) THEN
     LEAVE add_desasignacion;
 END IF;
 
+IF (NOT ExisteAsignacion(idcursohabilitado_temp, carnet_in)) THEN
+    SELECT 'El estudiante no se encuentra asignado' AS ERROR;
+    LEAVE add_desasignacion;
+END IF;
+
+
 SELECT ch.asignados INTO asignados_temp
 FROM cursohabilitado ch
 WHERE ch.idcursohabilitado = idcursohabilitado_temp;
@@ -642,7 +670,6 @@ AND e.carnet = carnet_in
 SELECT 'El estudiante se desasigno correctamente' AS MENSAJE;
 
 END $$
-
 
 
 /*                                 Notas                                       */
@@ -668,6 +695,7 @@ SELECT EXISTS(
 RETURN (existe);
 END $$
 
+
 DELIMITER $$
 CREATE PROCEDURE addNotaCurso(
     IN codigo_in INT,
@@ -682,6 +710,7 @@ DECLARE nota_rounded INT;
 DECLARE creditos_estudiante INT;
 DECLARE anio_actual INT;
 DECLARE idcursohabilitado_temp INT;
+DECLARE status_temp INT;
 
 IF (NOT ExisteCurso(codigo_in)) THEN
     SELECT 'El curso ', codigo_in, ' no existe' AS ERROR;
@@ -717,12 +746,27 @@ IF (NOT ExisteEstudiante(carnet_in)) THEN
     LEAVE add_notas;
 END IF;
 
+IF (NOT ExisteAsignacion(idcursohabilitado_temp, carnet_in)) THEN
+    SELECT 'El estudiante no esta asignado' AS ERROR;
+    LEAVE add_notas;
+END IF;
+
+IF (status_temp = 0) THEN
+    SELECT CONCAT('El estudiante no se encuentra asignado') AS ERROR;
+    LEAVE add_notas;
+END IF;
+
 IF (ExisteNotaCurso(idcursohabilitado_temp, carnet_in)) THEN
     SELECT CONCAT('Ya existe una nota ingresada para el estudiante ', carnet_in) AS ERROR;
     LEAVE add_notas;
 END IF;
 
 SET nota_rounded = ROUND(nota_in);
+
+IF (NOT ValidarEnteroPositivo(nota_rounded) AND nota_rounded < 0 AND nota_rounded > 100) THEN
+    SELECT 'La nota debe ser un entero positivo y estar en el rango [0-100]' AS ERROR;
+    LEAVE add_notas;
+END IF;
 
 IF (nota_rounded >= 61) THEN
     SELECT c.creditos_otorgados INTO creditos_otorgados
@@ -1082,12 +1126,20 @@ CREATE PROCEDURE consultarPensum(
 )
 consultar_pensum:BEGIN
 
-SELECT cu.codigo, cu.nombre,
+(SELECT cu.codigo, cu.nombre,
        CASE WHEN cu.obligatorio = 1 THEN 'Si' ELSE 'No' END AS obligatorio,
        cu.creditos_necesarios
 FROM carrera c, curso cu
 WHERE c.idcarrera = cu.carrera_idcarrera
-AND c.idcarrera = codigocarrera_in;
+AND c.idcarrera = codigocarrera_in)
+UNION ALL
+(SELECT cu.codigo, cu.nombre,
+       CASE WHEN cu.obligatorio = 1 THEN 'Si' ELSE 'No' END AS obligatorio,
+       cu.creditos_necesarios
+FROM carrera c, curso cu
+WHERE c.idcarrera = cu.carrera_idcarrera
+AND c.idcarrera = 1)
+;
 
 END $$
 
@@ -1216,14 +1268,23 @@ IF (NOT ExisteCurso(codigocurso_in)) THEN
     LEAVE consultar_actas;
 END IF;
 
-SELECT ch.curso_codigo, ch.seccion,
+SELECT ch.curso_codigo, ch.seccion as _seccion,
        (CASE WHEN ch.ciclo = '1S' THEN 'PRIMER SEMESTRE'
             WHEN ch.ciclo = 'VJ' THEN 'VACACIONES DE JUNIO'
             WHEN ch.ciclo = '2S' THEN 'SEGUNDO SEMESTRE'
             WHEN ch.ciclo = 'VD' THEN 'VACACIONES DE DICIEMBRE'
-        END) AS ciclo, ch.anio, a.fecha_creacion,
+        END) AS _ciclo, ch.anio as _anio, a.fecha_creacion,
         (SELECT COUNT(*) FROM cursohabilitado ch, notas n
-            WHERE ch.idcursohabilitado = n.cursohabilitado_idcursohabilitado) AS cantidad_notas
+            WHERE ch.idcursohabilitado = n.cursohabilitado_idcursohabilitado
+            AND ch.curso_codigo = codigocurso_in
+            AND ch.ciclo = (CASE WHEN _ciclo = 'PRIMER SEMESTRE' THEN '1S'
+                WHEN _ciclo = 'VACACIONES DE JUNIO' THEN 'VJ'
+                WHEN _ciclo = 'SEGUNDO SEMESTRE' THEN '2S'
+                WHEN _ciclo = 'VACACIONES DE DICIEMBRE' THEN 'VD'
+                END)
+            and ch.anio = _anio
+            and ch.seccion = _seccion
+            ) AS cantidad_notas
 FROM cursohabilitado ch, actas a
 WHERE ch.idcursohabilitado = a.cursohabilitado_idcursohabilitado
 AND ch.curso_codigo = codigocurso_in
@@ -1240,6 +1301,20 @@ CREATE PROCEDURE consultarTasaDesasignacion(
     IN seccion_in VARCHAR(1)
 )
 consultar_tasa:BEGIN
+DECLARE idcursohabilitado_temp INT;
+
+SELECT ch.idcursohabilitado INTO idcursohabilitado_temp
+FROM cursohabilitado ch
+WHERE ch.curso_codigo = codigocurso_in
+AND ch.ciclo = ciclo_in
+AND ch.anio = anio_in
+AND ch.seccion = seccion_in;
+
+IF (NOT existeIdCursoHabilitado(idcursohabilitado_temp)) THEN
+    SELECT 'El curso habilitado no existe' AS ERROR;
+    LEAVE consultar_tasa;
+END IF;
+
 SELECT ch.curso_codigo, ch.seccion,
        (CASE WHEN ch.ciclo = '1S' THEN 'PRIMER SEMESTRE'
            WHEN ch.ciclo = 'VJ' THEN 'VACACIONES DE JUNIO'
@@ -1248,16 +1323,19 @@ SELECT ch.curso_codigo, ch.seccion,
     ch.anio,
     (SELECT COUNT(*) FROM cursohabilitado ch, asignacioncurso a
                      WHERE a.cursohabilitado_idcursohabilitado = ch.idcursohabilitado
-                     AND a.status = 1) as asignados,
+                     AND ch.idcursohabilitado = idcursohabilitado_temp AND a.status = 1) as asignados,
     (SELECT COUNT(*) FROM cursohabilitado ch, asignacioncurso a
                      WHERE a.cursohabilitado_idcursohabilitado = ch.idcursohabilitado
-                     AND a.status = 0) as desasignados,
+                     AND ch.idcursohabilitado = idcursohabilitado_temp AND a.status = 0) as desasignados,
     ((SELECT COUNT(*) FROM cursohabilitado ch, asignacioncurso a
                      WHERE a.cursohabilitado_idcursohabilitado = ch.idcursohabilitado
-                     AND a.status = 0)
-    /(SELECT COUNT(*) FROM cursohabilitado ch, asignacioncurso a
+                     AND ch.idcursohabilitado = idcursohabilitado_temp AND a.status = 0)
+    /((SELECT COUNT(*) FROM cursohabilitado ch, asignacioncurso a
                      WHERE a.cursohabilitado_idcursohabilitado = ch.idcursohabilitado
-                     AND a.status = 1)
+                     AND ch.idcursohabilitado = idcursohabilitado_temp AND a.status = 1)
+          + (SELECT COUNT(*) FROM cursohabilitado ch, asignacioncurso a
+                     WHERE a.cursohabilitado_idcursohabilitado = ch.idcursohabilitado
+                     AND ch.idcursohabilitado = idcursohabilitado_temp AND a.status = 0))
      )*100 AS porcentaje_desasignacion
 FROM cursohabilitado ch
 WHERE ch.curso_codigo = codigocurso_in
